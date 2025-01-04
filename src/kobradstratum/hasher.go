@@ -11,6 +11,8 @@ import (
 	"math/big"
 
 	"github.com/kobradag/kobrad/app/appmessage"
+	"github.com/aead/skein"
+	"golang.org/x/crypto/sha3"
 )
 
 // static value definitions to avoid overhead in diff translations

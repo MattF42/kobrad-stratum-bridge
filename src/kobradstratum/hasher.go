@@ -59,17 +59,30 @@ func SerializeBlockHeader(template *appmessage.RPCBlock) ([]byte, error) {
 	copy(fixedSizeKey[:], "BlockHash")
 	hasher := blake3.New(32, fixedSizeKey[:])
 
-	write16(hasher, uint16(template.Header.Version))
-	write64(hasher, uint64(len(template.Header.Parents)))
+	// 1. BLAKE2 hashing
+	// blake2Hash := blake2b.Sum256(powHash.ByteSlice())
+
+	// 2. Skein hashing
+	skeinHasher := skein.New256(nil)
+	skeinHasher.Write(hasher[:])
+	skeinHash := skeinHasher.Sum(nil)
+
+	// 3. SHA3-256 hashing
+	sha3Hasher := sha3.New256()
+	sha3Hasher.Write(skeinHash)
+	finalHash := sha3Hasher.Sum(nil)
+
+	write16(finalHash, uint16(template.Header.Version))
+	write64(finalHash, uint64(len(template.Header.Parents)))
 	for _, v := range template.Header.Parents {
-		write64(hasher, uint64(len(v.ParentHashes)))
+		write64(finalHash, uint64(len(v.ParentHashes)))
 		for _, hash := range v.ParentHashes {
-			writeHexString(hasher, hash)
+			writeHexString(finalHash, hash)
 		}
 	}
-	writeHexString(hasher, template.Header.HashMerkleRoot)
-	writeHexString(hasher, template.Header.AcceptedIDMerkleRoot)
-	writeHexString(hasher, template.Header.UTXOCommitment)
+	writeHexString(finalHash, template.Header.HashMerkleRoot)
+	writeHexString(finalHash, template.Header.AcceptedIDMerkleRoot)
+	writeHexString(finalHash, template.Header.UTXOCommitment)
 
 	// pack the rest of the header at once
 	data := struct {
@@ -90,7 +103,7 @@ func SerializeBlockHeader(template *appmessage.RPCBlock) ([]byte, error) {
 	if err := binary.Write(detailsBuff, binary.LittleEndian, data); err != nil {
 		return nil, err
 	}
-	hasher.Write(detailsBuff.Bytes())
+	finalHash.Write(detailsBuff.Bytes())
 
 	bw := template.Header.BlueWork
 	padding := len(bw) + (len(bw) % 2)
@@ -102,11 +115,11 @@ func SerializeBlockHeader(template *appmessage.RPCBlock) ([]byte, error) {
 		}
 	}
 	hh, _ := hex.DecodeString(bw)
-	write64(hasher, uint64(len(hh)))
-	writeHexString(hasher, bw)
-	writeHexString(hasher, template.Header.PruningPoint)
+	write64(finalHash, uint64(len(hh)))
+	writeHexString(finalHash, bw)
+	writeHexString(finalHash, template.Header.PruningPoint)
 
-	final := hasher.Sum(nil)
+	final := finalHash.Sum(nil)
 	//log.Println(final)
 	return final, nil
 }
